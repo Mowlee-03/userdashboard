@@ -1,14 +1,62 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Container, Box, Typography, TextField, Button, Alert, InputAdornment } from '@mui/material';
-import { User, Mail, Lock, Phone } from 'lucide-react';
+import { Container, Box, Typography, TextField, Button, Snackbar, InputAdornment, Tooltip, Alert } from '@mui/material';
+import { User, Mail, Lock, Phone, Info, Eye, EyeOff } from 'lucide-react';
+import axios from 'axios';
+import { SIGNUP_USER } from '../auth/api';
 
 function Register() {
   const [formData, setFormData] = useState({ email: '', password: '', username: '', phone: '' });
-  const [confirmPassword, setConfirmPassword] = useState(''); // Confirm Password state
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState(null);
   const [formErrors, setFormErrors] = useState({ email: '', password: '', username: '', phone: '', confirmPassword: '' });
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
+
+  const passwordRequirements = {
+    minLength: 6,
+    hasNumber: /\d/.test(formData.password),
+    hasLowerCase: /[a-z]/.test(formData.password),
+    hasUpperCase: /[A-Z]/.test(formData.password),
+    hasSpecialChar: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password),
+  };
+
+  const getPasswordStrength = () => {
+    const metRequirements = Object.values(passwordRequirements).filter(Boolean).length;
+    if (metRequirements <= 1) return 'Very Weak';
+    if (metRequirements === 2) return 'Weak';
+    if (metRequirements === 3) return 'Medium';
+    if (metRequirements === 4) return 'Strong';
+    return 'Very Strong';
+  };
+
+  const passwordTooltip = (
+    <div className="space-y-1 p-2">
+      <p className="font-semibold">Password must contain:</p>
+      <ul className="list-disc pl-4 space-y-1">
+        <li className={formData.password.length >= 6 ? 'text-green-500' : 'text-red-500'}>
+          At least 6 characters
+        </li>
+        <li className={/\d/.test(formData.password) ? 'text-green-500' : 'text-red-500'}>
+          At least one number
+        </li>
+        <li className={/[a-z]/.test(formData.password) ? 'text-green-500' : 'text-red-500'}>
+          At least one lowercase letter
+        </li>
+        <li className={/[A-Z]/.test(formData.password) ? 'text-green-500' : 'text-red-500'}>
+          At least one uppercase letter
+        </li>
+        <li className={/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? 'text-green-500' : 'text-red-500'}>
+          At least one special character
+        </li>
+      </ul>
+      <p className="mt-2">
+        Strength: <span className="font-semibold">{getPasswordStrength()}</span>
+      </p>
+    </div>
+  );
 
   const validate = () => {
     let isValid = true;
@@ -30,9 +78,27 @@ function Register() {
     if (!formData.password) {
       errors.password = 'Password is required';
       isValid = false;
-    } else if (formData.password.length < 6) {
-      errors.password = 'Password must be at least 6 characters';
-      isValid = false;
+    } else {
+      if (formData.password.length < 6) {
+        errors.password = 'Password must be at least 6 characters';
+        isValid = false;
+      }
+      if (!/\d/.test(formData.password)) {
+        errors.password = 'Password must contain at least one number';
+        isValid = false;
+      }
+      if (!/[a-z]/.test(formData.password)) {
+        errors.password = 'Password must contain at least one lowercase letter';
+        isValid = false;
+      }
+      if (!/[A-Z]/.test(formData.password)) {
+        errors.password = 'Password must contain at least one uppercase letter';
+        isValid = false;
+      }
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(formData.password)) {
+        errors.password = 'Password must contain at least one special character';
+        isValid = false;
+      }
     }
 
     if (!formData.phone) {
@@ -66,12 +132,20 @@ function Register() {
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
-
     try {
-      navigate('/login');
+      const response = await axios.post(SIGNUP_USER, formData);
+      setSnackbar({ open: true, message: 'Registered successfully!', severity: 'success' });
+      setTimeout(()=>{
+        navigate('/login');  
+      },1000)
+      
     } catch (error) {
-      setError(error.message);
+      setSnackbar({ open: true, message: error.response.data.message, severity: 'error' });
     }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   return (
@@ -92,7 +166,6 @@ function Register() {
           <Typography component="h1" variant="h5" gutterBottom>
             Register
           </Typography>
-          {error && <Alert severity="error" sx={{ width: '100%', mb: 2 }}>{error}</Alert>}
           <Box component="form" onSubmit={onSubmit} noValidate sx={{ mt: 1 }}>
             <TextField
               margin="normal"
@@ -143,9 +216,9 @@ function Register() {
               fullWidth
               name="password"
               label="Password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               id="password"
-              autoComplete="current-password"
+              autoComplete="new-password"
               value={formData.password}
               onChange={onChange}
               error={!!formErrors.password}
@@ -153,8 +226,22 @@ function Register() {
               variant="outlined"
               InputProps={{
                 endAdornment: (
-                  <InputAdornment position="end">
-                    <Lock />
+                  <InputAdornment position="end" className="space-x-1">
+                    <Tooltip title={passwordTooltip} arrow placement="bottom">
+                      <div className="cursor-help">
+                        <Info className="text-gray-500" />
+                      </div>
+                    </Tooltip>
+                    <div 
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="cursor-pointer"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="text-gray-500" />
+                      ) : (
+                        <Eye className="text-gray-500" />
+                      )}
+                    </div>
                   </InputAdornment>
                 ),
               }}
@@ -165,8 +252,9 @@ function Register() {
               fullWidth
               name="confirmPassword"
               label="Confirm Password"
-              type="password"
+              type={showConfirmPassword ? "text" : "password"}
               id="confirmPassword"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={onConfirmPasswordChange}
               error={!!formErrors.confirmPassword}
@@ -175,7 +263,16 @@ function Register() {
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <Lock />
+                    <div 
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="cursor-pointer"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="text-gray-500" />
+                      ) : (
+                        <Eye className="text-gray-500" />
+                      )}
+                    </div>
                   </InputAdornment>
                 ),
               }}
@@ -188,7 +285,10 @@ function Register() {
               label="Phone Number"
               id="phone"
               value={formData.phone}
-              onChange={onChange}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, '').slice(0, 10); 
+                setFormData({ ...formData, phone: value });
+              }} 
               error={!!formErrors.phone}
               helperText={formErrors.phone}
               variant="outlined"
@@ -199,7 +299,11 @@ function Register() {
                   </InputAdornment>
                 ),
               }}
+              inputProps={{
+                inputMode: "numeric",
+              }}
             />
+
             <Button
               type="submit"
               fullWidth
@@ -218,6 +322,20 @@ function Register() {
           </Typography>
         </Box>
       </Container>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        sx={{ top: 0 }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 }
